@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Provider, useDispatch } from 'react-redux'
 import { Toaster } from 'react-hot-toast'
@@ -38,15 +38,22 @@ function AppLayout() {
   const location = useLocation()
   const dispatch = useDispatch()
   const { isAuthenticated, token, isLoading, user, isInitialized } = useSelector((state) => state.auth)
+  const initializationAttempted = useRef(false)
   
   // Initialize authentication on app load
   useEffect(() => {
     const initAuth = async () => {
+      // Prevent multiple initialization attempts
+      if (initializationAttempted.current) return
+      initializationAttempted.current = true
+      
       if (token && !user && !isInitialized) {
         try {
           await dispatch(fetchUser()).unwrap()
         } catch (error) {
           console.error('Failed to fetch user on app initialization:', error)
+          // Reset flag if there's an error so it can retry later if needed
+          initializationAttempted.current = false
           // Token is invalid, will be cleared by fetchUser.rejected
         }
       } else if (!token && !isInitialized) {
@@ -56,7 +63,7 @@ function AppLayout() {
     }
     
     initAuth()
-  }, [dispatch, token, user, isInitialized])
+  }, [dispatch, token, user, isInitialized]) // Keep dependencies but prevent multiple calls with ref
   
   // Check if current route is ChallengePage (challenge detail page)
   const isChallengePage = location.pathname.includes('/challenges/') && location.pathname.split('/').length === 3

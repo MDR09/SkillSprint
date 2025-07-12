@@ -15,12 +15,14 @@ import {
   CheckIcon,
   XMarkIcon,
   ExclamationTriangleIcon,
-  SparklesIcon
+  SparklesIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline'
 import { 
   fetchCompetitionById, 
   joinCompetition, 
   startCompetition,
+  deleteCompetition,
   clearCurrentCompetition,
   fetchLeaderboard,
   autoSubmitSolution,
@@ -47,13 +49,14 @@ const CompetitionPage = () => {
   } = useSelector((state) => state.competition)
   const { user } = useSelector((state) => state.auth)
   
-  const [activeTab, setActiveTab] = useState('overview')
   const [showJoinModal, setShowJoinModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [currentCode, setCurrentCode] = useState('')
   const [currentLanguage, setCurrentLanguage] = useState('javascript')
   const autoSubmitTriggeredRef = useRef(false)
   const [winner, setWinner] = useState(null)
   const socketRef = useRef(null)
+  const [activeTab, setActiveTab] = useState('overview')
 
   // Define competition and participant variables early
   const competition = currentCompetition
@@ -75,63 +78,33 @@ const CompetitionPage = () => {
 
     // Listen for competition started event
     socketRef.current.on('competitionStarted', (data) => {
-      console.log('Competition started event received:', data)
-      console.log('Debug info:', {
-        isParticipant,
-        isCreator,
-        user,
-        competition,
-        challengeId: data.challengeId,
-        competitionChallengeId: competition?.challenge?._id
-      })
+      console.log('🚀 Competition started event received:', data)
       
       toast.success('🚀 Competition has started! Good luck!', {
         duration: 4000,
         icon: '🏁'
       })
       
-      // Navigate to challenge page for all participants when competition starts
+      console.log('🔗 Socket event - Competition started for user:', {
+        competitionId: id,
+        isParticipant,
+        isCreator,
+        currentUser: user?.username,
+        currentTab: activeTab
+      })
+      
+      // For both creator and participants, switch to code editor tab
       if (isParticipant || isCreator) {
-        // First try to navigate with the challengeId from the event
-        const challengeId = data.challengeId || competition?.challenge?._id || competition?.challenge
-        console.log('Attempting navigation to challengeId:', challengeId)
-        
-        if (challengeId) {
-          console.log('Navigating to:', `/challenges/${challengeId}?competitionId=${id}`)
-          setTimeout(() => {
-            navigate(`/challenges/${challengeId}?competitionId=${id}`)
-          }, 1000)
-        } else {
-          // If no challengeId available, refresh competition data first and then navigate
-          console.log('No challengeId available, refreshing competition data first')
-          dispatch(fetchCompetitionById(id)).then((result) => {
-            const refreshedCompetition = result.payload?.data || result.payload
-            const refreshedChallengeId = refreshedCompetition?.challenge?._id || refreshedCompetition?.challenge
-            console.log('After refresh, challengeId:', refreshedChallengeId)
-            
-            if (refreshedChallengeId) {
-              setTimeout(() => {
-                navigate(`/challenges/${refreshedChallengeId}?competitionId=${id}`)
-              }, 500)
-            } else {
-              console.error('Still no challengeId found after refresh')
-              // Fallback: at least switch to the code tab
-              toast.error('Could not navigate to challenge page, switching to code tab')
-              setActiveTab('code')
-            }
-          })
-        }
-      } else {
-        console.log('User is not participant or creator, skipping navigation')
+        console.log('🔗 Switching to code editor tab for competition')
+        setActiveTab('code')
       }
       
-      // Always refresh competition data
+      // Always refresh competition data for display updates
       dispatch(fetchCompetitionById(id))
     })
 
     // Listen for competition ended event  
     socketRef.current.on('competitionEnded', (data) => {
-      console.log('Competition ended event received:', data)
       toast.success('🏁 Competition has ended!')
       setWinner(data.winner)
       dispatch(fetchCompetitionById(id)) // Refresh competition data
@@ -139,14 +112,12 @@ const CompetitionPage = () => {
 
     // Listen for participant joined
     socketRef.current.on('participantJoined', (data) => {
-      console.log('Participant joined:', data)
       toast.success(`${data.username} joined the competition!`)
       dispatch(fetchCompetitionById(id)) // Refresh competition data
     })
 
     // Listen for submission updates
     socketRef.current.on('submissionUpdate', (data) => {
-      console.log('Submission update:', data)
       dispatch(fetchLeaderboard(id)) // Refresh leaderboard
     })
 
@@ -171,9 +142,18 @@ const CompetitionPage = () => {
   // Auto-switch to code tab when competition becomes active for participants
   useEffect(() => {
     if (isParticipant && competition?.status === 'active' && activeTab !== 'code') {
+      console.log('🔄 Auto-switching to code tab for active competition participant')
       setActiveTab('code')
     }
   }, [competition?.status, isParticipant, activeTab])
+
+  // Switch to code tab when page loads for participants in active competitions (only once)
+  useEffect(() => {
+    if (competition && isParticipant && competition?.status === 'active' && activeTab === 'overview') {
+      console.log('🎯 Page loaded - switching participant to code tab for active competition')
+      setActiveTab('code')
+    }
+  }, [competition?.status, competition?._id, isParticipant]) // Only trigger when competition status or ID changes
 
   const handleJoinCompetition = async () => {
     try {
@@ -190,10 +170,44 @@ const CompetitionPage = () => {
 
   const handleStartCompetition = async () => {
     try {
-      await dispatch(startCompetition(id)).unwrap()
-      toast.success('Competition started!')
+      console.log('🚀 Starting competition:', {
+        competitionId: id,
+        challengeId: competition?.challenge?._id || competition?.challenge,
+        participantCount: competition?.participants?.length
+      })
+      
+      toast.loading('Starting competition...', { id: 'start-competition' })
+      
+      const result = await dispatch(startCompetition(id)).unwrap()
+      
+      toast.success('Competition started! Switching to code editor...', { 
+        id: 'start-competition',
+        duration: 2000 
+      })
+      
+      console.log('✅ Competition started successfully:', result)
+      
+      // Immediately switch creator to code tab
+      console.log('🔗 Creator starting competition - switching to code tab')
+      setActiveTab('code')
+      
+      // Socket events will handle switching other participants to code tab
+      
     } catch (error) {
-      toast.error(error.message || 'Failed to start competition')
+      console.error('❌ Failed to start competition:', error)
+      toast.error(error.message || 'Failed to start competition', { id: 'start-competition' })
+    }
+  }
+
+  const handleDeleteCompetition = async () => {
+    try {
+      await dispatch(deleteCompetition(id)).unwrap()
+      toast.success('Competition deleted successfully!')
+      setShowDeleteModal(false)
+      navigate('/competitions')
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete competition')
+      setShowDeleteModal(false)
     }
   }
 
@@ -298,7 +312,22 @@ const CompetitionPage = () => {
     )
   }
 
-  const canStart = isCreator && competition?.status === 'pending'
+  // Debug logging
+  console.log('Competition Page Debug:', {
+    isCreator,
+    competitionStatus: competition?.status,
+    participantCount: competition?.participants?.length,
+    maxParticipants: competition?.maxParticipants,
+    participants: competition?.participants?.map(p => ({
+      userId: p.user?._id || p.user,
+      username: p.user?.username || 'Unknown'
+    }))
+  })
+
+  const canStart = isCreator && 
+                 competition?.status === 'pending' && 
+                 competition?.participants?.length >= 1 // Temporarily allow 1 participant for testing
+  const canDelete = isCreator && (competition?.status === 'pending' || competition?.status === 'completed')
   const canJoin = !isParticipant && 
                   competition?.status === 'pending' && 
                   (competition?.participants?.length || 0) < (competition?.maxParticipants || 0) &&
@@ -368,6 +397,9 @@ const CompetitionPage = () => {
             </div>
 
             <div className="flex items-center space-x-3">
+              {/* Debug: Log button visibility */}
+              {console.log('Button visibility:', { canJoin, canStart, canDelete })}
+              
               {canJoin && (
                 <motion.button
                   whileHover={{ scale: 1.02 }}
@@ -388,6 +420,18 @@ const CompetitionPage = () => {
                 >
                   <PlayIcon className="w-4 h-4 mr-2" />
                   Start Competition
+                </motion.button>
+              )}
+              {canDelete && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowDeleteModal(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  title="Delete Competition"
+                >
+                  <XMarkIcon className="w-4 h-4 mr-2" />
+                  Delete
                 </motion.button>
               )}
             </div>
@@ -559,23 +603,38 @@ const CompetitionPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="space-y-6">
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Challenge Details</h3>
-                {competition?.challenge ? (
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Competition Overview</h3>
+                <div className="space-y-4">
                   <div>
-                    <h4 className="font-medium text-gray-900">{competition.challenge.title}</h4>
-                    <p className="text-gray-600 mt-2">{competition.challenge.description}</p>
-                    <div className="mt-4 flex items-center space-x-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {competition.challenge.difficulty}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {competition.challenge.category}
-                      </span>
-                    </div>
+                    <h4 className="font-medium text-gray-900">Status</h4>
+                    <p className="text-gray-600 mt-1">
+                      {competition?.status === 'active' ? 'Competition is live!' : 'Waiting to start...'}
+                    </p>
                   </div>
-                ) : (
-                  <p className="text-gray-500">Challenge details not available</p>
-                )}
+                  <div>
+                    <h4 className="font-medium text-gray-900">Participants</h4>
+                    <p className="text-gray-600 mt-1">
+                      {competition?.participants?.length || 0} / {competition?.maxParticipants || 'Unlimited'} joined
+                    </p>
+                  </div>
+                  {competition?.challenge && (
+                    <div>
+                      <h4 className="font-medium text-gray-900">Challenge</h4>
+                      <div className="mt-2 flex items-center space-x-4">
+                        <span className="font-medium text-gray-900">{competition.challenge.title}</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {competition.challenge.difficulty}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {competition.challenge.category}
+                        </span>
+                      </div>
+                      <p className="text-gray-600 mt-2 text-sm">
+                        Switch to the Code Editor tab to view the full challenge details and start coding.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bg-white rounded-lg shadow p-6">
@@ -672,123 +731,6 @@ const CompetitionPage = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
           >
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Join Competition</h3>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to join "{competition.title}"? 
-              {competition.type === '1v1' && " This is a head-to-head challenge!"}
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setShowJoinModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleJoinCompetition}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
-              >
-                Join Competition
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Tab Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-          >
-            {activeTab === 'overview' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Competition Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">Information</h4>
-                      <div className="space-y-2 text-sm text-gray-600">
-                        <p><span className="font-medium">Type:</span> {competition?.type}</p>
-                        <p><span className="font-medium">Status:</span> {competition?.status}</p>
-                        <p><span className="font-medium">Duration:</span> {competition?.timeLimit} minutes</p>
-                        <p><span className="font-medium">Max Participants:</span> {competition?.maxParticipants}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">Schedule</h4>
-                      <div className="space-y-2 text-sm text-gray-600">
-                        <p><span className="font-medium">Start Time:</span> {competition?.startTime ? new Date(competition.startTime).toLocaleString() : 'TBD'}</p>
-                        {competition?.actualStartTime && (
-                          <p><span className="font-medium">Started:</span> {new Date(competition.actualStartTime).toLocaleString()}</p>
-                        )}
-                        {competition?.endTime && (
-                          <p><span className="font-medium">Ended:</span> {new Date(competition.endTime).toLocaleString()}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {competition?.challenge && (
-                  <div className="bg-white rounded-lg shadow p-6">
-                    <h3 className="text-lg font-medium text-gray-900 mb-4">Challenge</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{competition.challenge.title}</h4>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 ${
-                          competition.challenge.difficulty === 'Easy' ? 'bg-green-100 text-green-800' :
-                          competition.challenge.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {competition.challenge.difficulty}
-                        </span>
-                      </div>
-                      <p className="text-gray-600">{competition.challenge.description}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'participants' && (
-              <ParticipantsList competition={competition} />
-            )}
-
-            {activeTab === 'leaderboard' && (
-              <CompetitionLeaderboard competition={competition} leaderboard={leaderboard} />
-            )}
-
-            {activeTab === 'chat' && (
-              <CompetitionChat competition={competition} />
-            )}
-
-            {activeTab === 'code' && isParticipant && competition?.status === 'active' && (
-              <CompetitionEditor 
-                competition={competition} 
-                challenge={competition?.challenge}
-                onCodeChange={setCurrentCode}
-                onLanguageChange={setCurrentLanguage}
-                currentCode={currentCode}
-                currentLanguage={currentLanguage}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* Join Competition Modal */}
-      {showJoinModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
-          >
             <div className="text-center">
               <TrophyIcon className="w-12 h-12 text-blue-600 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Join Competition</h3>
@@ -807,6 +749,41 @@ const CompetitionPage = () => {
                   className="flex-1 px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
                 >
                   Join Now
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delete Competition Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
+          >
+            <div className="text-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ExclamationTriangleIcon className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Delete Competition</h3>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to permanently delete "{competition?.title}"? This will remove the competition from your screen and cannot be undone.
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteCompetition}
+                  className="flex-1 px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+                >
+                  Delete Competition
                 </button>
               </div>
             </div>

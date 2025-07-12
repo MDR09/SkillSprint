@@ -74,6 +74,18 @@ export const respondToInvitation = createAsyncThunk(
   }
 );
 
+export const deleteCompetition = createAsyncThunk(
+  'competitions/deleteCompetition',
+  async (competitionId, { rejectWithValue }) => {
+    try {
+      const response = await competitionAPI.deleteCompetition(competitionId);
+      return { competitionId, message: response.data.message };
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to delete competition');
+    }
+  }
+);
+
 export const startCompetition = createAsyncThunk(
   'competitions/startCompetition',
   async (competitionId, { rejectWithValue }) => {
@@ -296,6 +308,28 @@ const competitionSlice = createSlice({
         }
       })
       .addCase(joinCompetition.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      
+      // Delete competition
+      .addCase(deleteCompetition.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteCompetition.fulfilled, (state, action) => {
+        state.loading = false;
+        const competitionId = action.payload.competitionId;
+        // Remove from competitions list after successful deletion
+        state.competitions = state.competitions.filter(comp => comp._id !== competitionId);
+        // Remove from my competitions list
+        state.myCompetitions = state.myCompetitions.filter(comp => comp._id !== competitionId);
+        // Clear current competition if it's the deleted one
+        if (state.currentCompetition && state.currentCompetition._id === competitionId) {
+          state.currentCompetition = null;
+        }
+      })
+      .addCase(deleteCompetition.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

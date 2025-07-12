@@ -19,6 +19,7 @@ import {
 import Editor from '@monaco-editor/react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import CompetitionTimer from '../components/competitions/CompetitionTimer'
+import WinnerModal from '../components/competitions/WinnerModal'
 import { fetchChallengeById } from '../store/slices/challengeSlice'
 import { submitCode } from '../store/slices/submissionSlice'
 import { fetchCompetitionById, autoSubmitSolution, endCompetition } from '../store/slices/competitionSlice'
@@ -26,6 +27,7 @@ import { mockSubmissionService } from '../services/mockSubmissionService'
 import { codeValidationService } from '../services/codeValidationService'
 import userAPI from '../services/api/userAPI'
 import toast from 'react-hot-toast'
+import CodeEditor from '../components/challenges/CodeEditor'
 
 // Constants for languages and templates
 const LANGUAGES = [
@@ -34,6 +36,10 @@ const LANGUAGES = [
   { value: 'java', label: 'Java' },
   { value: 'cpp', label: 'C++' }
 ]
+
+// Global cache to prevent duplicate template API calls
+const templateCache = new Set()
+let apiWarningShown = false
 
 const DEFAULT_TEMPLATES = {
   javascript: `/**
@@ -135,13 +141,29 @@ public:
       dispatch(fetchChallengeById(id))
         .unwrap()
         .catch(err => {
-          toast.error('Failed to load challenge')
+          // Check if we're dealing with rate limiting
+          const isRateLimited = err?.message?.includes('Too many requests') || 
+                               err?.status === 429
+          
+          if (isRateLimited) {
+            // Show a more informative message for rate limiting
+            toast('🔄 Using demo data - API temporarily rate limited', {
+              icon: '💡',
+              duration: 3000,
+              style: {
+                background: '#e3f2fd',
+                color: '#1565c0'
+              }
+            })
+          } else {
+            toast.error('Failed to load challenge')
+          }
           console.error('Challenge load error:', err)
         })
     }
   }, [dispatch, id])
 
-  // Set initial language and code template
+  // Set initial language
   useEffect(() => {
     if (currentChallenge?.allowedLanguages?.length) {
       const defaultLang = currentChallenge.allowedLanguages.includes(selectedLanguage) 
@@ -149,9 +171,57 @@ public:
         : currentChallenge.allowedLanguages[0]
       setSelectedLanguage(defaultLang)
     }
+  }, [currentChallenge, selectedLanguage])
+
+  // Load template when language changes
+  useEffect(() => {
+    if (id && selectedLanguage && currentChallenge) {
+      loadTemplate()
+    }
+  }, [id, selectedLanguage, currentChallenge])
+
+  const loadTemplate = async () => {
+    const templateKey = `${id}-${selectedLanguage}`
     
-    setCode(getCodeTemplate(selectedLanguage, currentChallenge))
-  }, [currentChallenge, selectedLanguage, getCodeTemplate])
+    // Prevent duplicate API calls for the same template
+    if (templateCache.has(templateKey)) {
+      setCode(getCodeTemplate(selectedLanguage, currentChallenge))
+      return
+    }
+    templateCache.add(templateKey)
+    
+    try {
+      const response = await fetch(`/api/challenges/${id}/template/${selectedLanguage}`)
+      
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        // Only log once per session
+        if (!apiWarningShown) {
+          console.info('💡 Template API not available, using default templates')
+          apiWarningShown = true
+        }
+        setCode(getCodeTemplate(selectedLanguage, currentChallenge))
+        return
+      }
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setCode(data.data.template)
+      } else {
+        console.error('Failed to load template:', data.message)
+        setCode(getCodeTemplate(selectedLanguage, currentChallenge))
+      }
+    } catch (error) {
+      // Only log once per session
+      if (!apiWarningShown) {
+        console.info('💡 Template API not available, using default templates')
+        apiWarningShown = true
+      }
+      setCode(getCodeTemplate(selectedLanguage, currentChallenge))
+    }
+  }
 
   // Handle editor mount
   const handleEditorDidMount = () => {
@@ -184,7 +254,6 @@ public:
 
     // Listen for competition end
     socketRef.current.on('competitionEnded', (data) => {
-      console.log('Competition ended:', data)
       setWinner(data.winner)
       setShowWinnerModal(true)
       autoSubmitTriggeredRef.current = true // Prevent further submissions
@@ -413,14 +482,16 @@ public:
           
           <div className="flex flex-wrap items-center gap-3">
             {/* Competition Timer */}
-            {isCompetitionMode && competition && (
+            {isCompetitionMode && competition && competition.status === 'active' && (
               <div className="flex items-center space-x-2">
                 <FireIcon className="w-5 h-5 text-orange-500" />
                 <span className="text-sm font-medium text-gray-700">Competition Mode</span>
                 <CompetitionTimer
-                  competition={competition}
+                  startTime={competition.actualStartTime || competition.startTime}
+                  timeLimit={competition.timeLimit}
                   onTimeUp={handleTimeUp}
-                  onAutoSubmit={handleAutoSubmit}
+                  competitionEnded={competition.status === 'completed'}
+                  isBanner={true}
                 />
               </div>
             )}
@@ -509,56 +580,20 @@ public:
             testResults={testResults}
             onEditorMount={handleEditorDidMount}
             isEditorReady={isEditorReady}
+            challenge={currentChallenge}
+            onResetTemplate={loadTemplate}
           />
         </div>
       </div>
       
       {/* Winner Modal */}
-      {showWinnerModal && winner && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
-          >
-            <div className="text-center">
-              <TrophyIcon className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Competition Ended!
-              </h2>
-              <p className="text-lg text-gray-600 mb-4">
-                Winner: <span className="font-semibold text-blue-600">{winner.username}</span>
-              </p>
-              <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-500">Submission Time</p>
-                    <p className="font-medium">{winner.submissionTime || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Test Cases Passed</p>
-                    <p className="font-medium">{winner.testsPassed || 'All'}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => navigate('/competitions')}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                >
-                  Back to Competitions
-                </button>
-                <button
-                  onClick={() => setShowWinnerModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <WinnerModal
+        isOpen={showWinnerModal && !!winner}
+        onClose={() => setShowWinnerModal(false)}
+        winner={winner}
+        currentUser={user}
+        competition={competition}
+      />
     </div>
   )
 }
@@ -708,7 +743,9 @@ const CodeEditorPanel = ({
   submissionLoading,
   testResults,
   onEditorMount,
-  isEditorReady
+  isEditorReady,
+  challenge,
+  onResetTemplate
 }) => (
   <>
     {/* Editor Header */}
@@ -731,6 +768,12 @@ const CodeEditorPanel = ({
         </div>
         
         <div className="flex space-x-2">
+          <button
+            onClick={onResetTemplate}
+            className="px-3 py-1.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm transition-colors"
+          >
+            Reset
+          </button>
           <button
             onClick={handleRunTests}
             disabled={!isEditorReady}

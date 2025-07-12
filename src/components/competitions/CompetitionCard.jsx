@@ -10,17 +10,20 @@ import {
   GlobeAltIcon,
   CalendarIcon,
   PlayIcon,
-  EyeIcon
+  EyeIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline'
 import { useDispatch, useSelector } from 'react-redux'
-import { joinCompetition } from '../../store/slices/competitionSlice'
+import { joinCompetition, deleteCompetition } from '../../store/slices/competitionSlice'
 import toast from 'react-hot-toast'
 
-const CompetitionCard = ({ competition }) => {
+const CompetitionCard = ({ competition, onDelete, isDeleted }) => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { user } = useSelector((state) => state.auth)
   const [isJoining, setIsJoining] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const isParticipant = competition.participants?.some(p => p.user._id === user._id || p.user === user._id)
   const creator = competition.createdBy || competition.creator
@@ -30,6 +33,9 @@ const CompetitionCard = ({ competition }) => {
                   !isFull &&
                   competition.status === 'pending' &&
                   (competition.isPublic || competition.invitations?.some(inv => inv.user === user._id))
+  
+  // Temporarily show delete button for all competitions to test visibility
+  const canDelete = true // TODO: Restore logic: isCreator && (competition.status === 'pending' || competition.status === 'completed')
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -79,6 +85,35 @@ const CompetitionCard = ({ competition }) => {
     }
   }
 
+  const handleDeleteCompetition = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // Prevent multiple deletion attempts
+    if (isDeleting || isDeleted) {
+      return
+    }
+    
+    setIsDeleting(true)
+    try {
+      // Mark as deleted locally in parent component first
+      if (onDelete) {
+        onDelete()
+      }
+      
+      // Call the API to delete from backend
+      await dispatch(deleteCompetition(competition._id)).unwrap()
+      toast.success('Competition deleted successfully!')
+      setShowDeleteConfirm(false)
+      
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete competition')
+      setShowDeleteConfirm(false)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const formatTimeRemaining = () => {
     const now = new Date()
     const startTime = new Date(competition.startTime)
@@ -105,19 +140,79 @@ const CompetitionCard = ({ competition }) => {
     return `${minutes}m`
   }
 
-  return (
-    <motion.div
-      whileHover={{ y: -2 }}
-      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden"
-    >
-      <Link 
-        to={isParticipant ? `/challenges/${competition.challenge?._id || competition.challengeId}` : `/competitions/${competition._id}`} 
-        className="block"
+  // Show deleted state for a few seconds before fading away
+  if (isDeleted) {
+    return (
+      <motion.div
+        initial={{ opacity: 1, scale: 1 }}
+        animate={{ opacity: 0.3, scale: 0.95 }}
+        exit={{ opacity: 0, scale: 0.8 }}
+        transition={{ duration: 0.5 }}
+        className="bg-gray-100 rounded-lg shadow-md overflow-hidden relative"
       >
+        <div className="absolute inset-0 bg-red-50 bg-opacity-90 flex items-center justify-center z-10">
+          <div className="text-center">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.3 }}
+              className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-2"
+            >
+              <XMarkIcon className="w-6 h-6 text-white" />
+            </motion.div>
+            <p className="text-red-600 font-medium text-sm">Deleted Successfully</p>
+            <p className="text-red-500 text-xs mt-1">This card will disappear shortly</p>
+          </div>
+        </div>
+        
+        {/* Faded background content */}
+        <div className="p-6 opacity-30">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {competition.title}
+              </h3>
+              <p className="text-gray-600 text-sm">
+                {competition.description}
+              </p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  return (
+    <>
+      <motion.div
+        whileHover={{ y: -2 }}
+        className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden relative"
+      >
+        {/* Delete Button - Outside Link to prevent interference */}
+        {canDelete && (
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setShowDeleteConfirm(true)
+            }}
+            className="absolute top-4 right-4 p-2 text-white bg-red-500 hover:bg-red-700 rounded-full transition-colors duration-200 border-2 border-red-300 shadow-lg z-20"
+            title="Delete Competition"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </motion.button>
+        )}
+
+        <Link 
+          to={isParticipant ? `/challenges/${competition.challenge?._id || competition.challengeId}` : `/competitions/${competition._id}`} 
+          className="block"
+        >
         {/* Header */}
         <div className="p-6 pb-4">
           <div className="flex items-start justify-between mb-3">
-            <div className="flex-1">
+            <div className="flex-1 pr-12">
               <div className="flex items-center space-x-2 mb-2">
                 {getTypeIcon(competition.type)}
                 <h3 className="text-lg font-semibold text-gray-900 line-clamp-1">
@@ -251,6 +346,53 @@ const CompetitionCard = ({ competition }) => {
         </div>
       </Link>
     </motion.div>
+
+    {/* Delete Confirmation Modal */}
+    {showDeleteConfirm && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
+        >
+          <div className="text-center">
+            <XMarkIcon className="w-12 h-12 text-red-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Delete Competition</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete "<strong>{competition.title}</strong>"? This action cannot be undone.
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setShowDeleteConfirm(false)
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteCompetition}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <div className="flex items-center justify-center">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Deleting...
+                  </div>
+                ) : (
+                  'Delete Competition'
+                )}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    )}
+    </>
   )
 }
 

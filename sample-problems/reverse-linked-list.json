@@ -1,0 +1,95 @@
+{
+  "title": "Reverse Linked List",
+  "difficulty": "Easy",
+  "description": "Given the head of a singly linked list, reverse the list, and return the reversed list.",
+  "problemStatement": "You are given the head of a singly linked list. Reverse the list and return the new head of the reversed list.\n\nA linked list can be reversed either iteratively or recursively. Could you implement both?",
+  "functionName": "reverseList",
+  "parameters": [
+    {
+      "name": "head",
+      "type": "ListNode",
+      "pythonType": "Optional[ListNode]",
+      "javaType": "ListNode",
+      "cppType": "ListNode*",
+      "description": "Head node of the singly linked list to reverse"
+    }
+  ],
+  "returnType": "ListNode",
+  "pythonReturnType": "Optional[ListNode]",
+  "javaReturnType": "ListNode",
+  "cppReturnType": "ListNode*",
+  "examples": [
+    {
+      "input": "head = [1,2,3,4,5]",
+      "output": "[5,4,3,2,1]",
+      "explanation": "The linked list is reversed from 1->2->3->4->5 to 5->4->3->2->1."
+    },
+    {
+      "input": "head = [1,2]",
+      "output": "[2,1]",
+      "explanation": "The linked list is reversed from 1->2 to 2->1."
+    },
+    {
+      "input": "head = []",
+      "output": "[]",
+      "explanation": "Empty list remains empty."
+    }
+  ],
+  "constraints": [
+    "The number of nodes in the list is the range [0, 5000].",
+    "-5000 <= Node.val <= 5000"
+  ],
+  "hints": [
+    "Try to solve this iteratively and recursively.",
+    "For the iterative approach, think about what information you need to keep track of.",
+    "For the recursive approach, think about the base case and how to build up the solution."
+  ],
+  "testCases": [
+    {
+      "input": {
+        "head": [1, 2, 3, 4, 5]
+      },
+      "expectedOutput": [5, 4, 3, 2, 1],
+      "isHidden": false
+    },
+    {
+      "input": {
+        "head": [1, 2]
+      },
+      "expectedOutput": [2, 1],
+      "isHidden": false
+    },
+    {
+      "input": {
+        "head": []
+      },
+      "expectedOutput": [],
+      "isHidden": false
+    },
+    {
+      "input": {
+        "head": [1]
+      },
+      "expectedOutput": [1],
+      "isHidden": true
+    },
+    {
+      "input": {
+        "head": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      },
+      "expectedOutput": [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+      "isHidden": true
+    }
+  ],
+  "category": "Linked List",
+  "tags": ["Linked List", "Recursion"],
+  "timeComplexity": "O(n)",
+  "spaceComplexity": "O(1) for iterative, O(n) for recursive",
+  "allowedLanguages": ["javascript", "python", "java", "cpp"],
+  "timeLimit": 45,
+  "memoryLimit": "256MB",
+  "scoring": {
+    "maxPoints": 150,
+    "partialCredit": true
+  }
+}

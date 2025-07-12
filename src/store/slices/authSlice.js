@@ -40,6 +40,12 @@ export const fetchUser = createAsyncThunk(
       const response = await authAPI.getProfile()
       return response.data
     } catch (error) {
+      // Handle rate limiting
+      if (error.message?.includes('Too many requests')) {
+        console.warn('Rate limit hit, backing off...')
+        return rejectWithValue('Rate limit exceeded. Please wait before trying again.')
+      }
+      
       // If backend is not available, return mock user data for demo
       if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
         console.log('Backend not available, using mock user data')

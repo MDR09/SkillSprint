@@ -1,0 +1,132 @@
+{
+  "title": "Merge Two Sorted Lists",
+  "difficulty": "Easy",
+  "description": "You are given the heads of two sorted linked lists list1 and list2. Merge the two lists in a one sorted list. The list should be made by splicing together the nodes of the first two lists.",
+  "problemStatement": "You are given the heads of two sorted linked lists list1 and list2.\n\nMerge the two lists in a one sorted list. The list should be made by splicing together the nodes of the first two lists.\n\nReturn the head of the merged linked list.",
+  "functionName": "mergeTwoLists",
+  "parameters": [
+    {
+      "name": "list1",
+      "type": "ListNode",
+      "pythonType": "Optional[ListNode]",
+      "javaType": "ListNode",
+      "cppType": "ListNode*",
+      "description": "Head of the first sorted linked list (can be null/empty)"
+    },
+    {
+      "name": "list2",
+      "type": "ListNode",
+      "pythonType": "Optional[ListNode]",
+      "javaType": "ListNode",
+      "cppType": "ListNode*",
+      "description": "Head of the second sorted linked list (can be null/empty)"
+    }
+  ],
+  "returnType": "ListNode",
+  "pythonReturnType": "Optional[ListNode]",
+  "javaReturnType": "ListNode",
+  "cppReturnType": "ListNode*",
+  "examples": [
+    {
+      "input": "list1 = [1,2,4], list2 = [1,3,4]",
+      "output": "[1,1,2,3,4,4]",
+      "explanation": "Merging the two sorted lists results in [1,1,2,3,4,4]."
+    },
+    {
+      "input": "list1 = [], list2 = []",
+      "output": "[]",
+      "explanation": "Both lists are empty, so the result is empty."
+    },
+    {
+      "input": "list1 = [], list2 = [0]",
+      "output": "[0]",
+      "explanation": "First list is empty, so return the second list."
+    }
+  ],
+  "constraints": [
+    "The number of nodes in both lists is in the range [0, 50].",
+    "-100 <= Node.val <= 100",
+    "Both list1 and list2 are sorted in non-decreasing order."
+  ],
+  "hints": [
+    "Think about using a dummy node to simplify the merging process.",
+    "Compare the values of the current nodes and attach the smaller one to your result.",
+    "Don't forget to handle the case where one list becomes empty before the other."
+  ],
+  "testCases": [
+    {
+      "input": {
+        "list1": [1, 2, 4],
+        "list2": [1, 3, 4]
+      },
+      "expectedOutput": [1, 1, 2, 3, 4, 4],
+      "isHidden": false,
+      "description": "Standard merge case with overlapping values"
+    },
+    {
+      "input": {
+        "list1": [],
+        "list2": []
+      },
+      "expectedOutput": [],
+      "isHidden": false,
+      "description": "Both lists empty"
+    },
+    {
+      "input": {
+        "list1": [],
+        "list2": [0]
+      },
+      "expectedOutput": [0],
+      "isHidden": false,
+      "description": "One list empty"
+    },
+    {
+      "input": {
+        "list1": [1, 2, 3],
+        "list2": [4, 5, 6]
+      },
+      "expectedOutput": [1, 2, 3, 4, 5, 6],
+      "isHidden": true,
+      "description": "No overlapping values, first list smaller"
+    },
+    {
+      "input": {
+        "list1": [4, 5, 6],
+        "list2": [1, 2, 3]
+      },
+      "expectedOutput": [1, 2, 3, 4, 5, 6],
+      "isHidden": true,
+      "description": "No overlapping values, second list smaller"
+    },
+    {
+      "input": {
+        "list1": [1],
+        "list2": [1]
+      },
+      "expectedOutput": [1, 1],
+      "isHidden": true,
+      "description": "Both lists have single identical element"
+    },
+    {
+      "input": {
+        "list1": [1, 1, 1],
+        "list2": [2, 2, 2]
+      },
+      "expectedOutput": [1, 1, 1, 2, 2, 2],
+      "isHidden": true,
+      "description": "Lists with duplicate values"
+    }
+  ],
+  "category": "Linked List",
+  "tags": ["Linked List", "Recursion", "Two Pointers"],
+  "timeComplexity": "O(m + n)",
+  "spaceComplexity": "O(1)",
+  "allowedLanguages": ["javascript", "python", "java", "cpp"],
+  "timeLimit": 30,
+  "memoryLimit": "256MB",
+  "scoring": {
+    "maxPoints": 100,
+    "partialCredit": true
+  }
+}

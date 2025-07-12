@@ -165,37 +165,77 @@ int main() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-screen">
+    <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 h-screen">
       {/* Problem Description */}
-      <div className="lg:col-span-1 space-y-4">
+      <div className="xl:col-span-2 space-y-4 max-h-screen overflow-y-auto">
         <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">{challenge.title}</h3>
-          <div className="prose prose-sm max-w-none">
-            <p className="text-gray-600">{challenge.description}</p>
-            
-            {challenge.examples && (
-              <div className="mt-4">
-                <h4 className="font-medium text-gray-900">Examples:</h4>
-                {challenge.examples.map((example, index) => (
-                  <div key={index} className="bg-gray-50 rounded p-3 mt-2">
-                    <p><strong>Input:</strong> {example.input}</p>
-                    <p><strong>Output:</strong> {example.output}</p>
-                    {example.explanation && (
-                      <p><strong>Explanation:</strong> {example.explanation}</p>
-                    )}
-                  </div>
-                ))}
+          <h3 className="text-xl font-bold text-gray-900 mb-4">{challenge.title}</h3>
+          <div className="prose prose-gray max-w-none">
+            {/* Show problemStatement if available (full formatted content), otherwise show description */}
+            {challenge.problemStatement ? (
+              <div className="text-gray-700 text-base leading-relaxed mb-6 whitespace-pre-line">
+                {challenge.problemStatement}
+              </div>
+            ) : (
+              <div className="text-gray-700 text-base leading-relaxed mb-6">
+                {challenge.description}
               </div>
             )}
             
-            {challenge.constraints && (
-              <div className="mt-4">
-                <h4 className="font-medium text-gray-900">Constraints:</h4>
-                <ul className="list-disc list-inside text-sm text-gray-600">
-                  {challenge.constraints.map((constraint, index) => (
-                    <li key={index}>{constraint}</li>
+            {/* Show structured examples if available and no problemStatement (to avoid duplication) */}
+            {!challenge.problemStatement && challenge.examples && challenge.examples.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Examples:</h4>
+                <div className="space-y-4">
+                  {challenge.examples.map((example, index) => (
+                    <div key={index} className="bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
+                      <div className="space-y-2">
+                        <div>
+                          <span className="font-semibold text-gray-900">Input:</span>
+                          <pre className="bg-gray-100 p-2 rounded mt-1 text-sm overflow-x-auto">{example.input}</pre>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-900">Output:</span>
+                          <pre className="bg-gray-100 p-2 rounded mt-1 text-sm overflow-x-auto">{example.output}</pre>
+                        </div>
+                        {example.explanation && (
+                          <div>
+                            <span className="font-semibold text-gray-900">Explanation:</span>
+                            <p className="text-gray-700 mt-1">{example.explanation}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
+              </div>
+            )}
+            
+            {/* Show structured constraints if available and no problemStatement (to avoid duplication) */}
+            {!challenge.problemStatement && challenge.constraints && challenge.constraints.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Constraints:</h4>
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+                  <ul className="list-disc list-inside space-y-1 text-gray-700">
+                    {challenge.constraints.map((constraint, index) => (
+                      <li key={index} className="text-sm">{constraint}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            
+            {/* Show hints if available */}
+            {challenge.hints && challenge.hints.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Hints:</h4>
+                <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg">
+                  <ul className="list-disc list-inside space-y-1 text-gray-700">
+                    {challenge.hints.map((hint, index) => (
+                      <li key={index} className="text-sm">{hint}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
           </div>
@@ -237,7 +277,8 @@ int main() {
       </div>
 
       {/* Code Editor */}
-      <div className="lg:col-span-2 space-y-4">
+      {/* Code Editor */}
+      <div className="xl:col-span-3 space-y-4 max-h-screen overflow-y-auto">
         {/* Editor Controls */}
         <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center justify-between">

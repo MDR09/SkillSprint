@@ -744,7 +744,79 @@ router.post('/:id/join', auth, async (req, res) => {
 // Start competition manually (creator only)
 router.post('/:id/start', auth, async (req, res) => {
   try {
-    const competition = await Competition.findById(req.params.id);
+    const { id } = req.params;
+    
+    console.log('🚀 Start competition request:', {
+      competitionId: id,
+      userId: req.user.id,
+      username: req.user.username
+    });
+
+    if (!isDatabaseConnected()) {
+      // Mock mode - handle start competition
+      const competitionIndex = mockCompetitions.findIndex(comp => comp._id === id);
+      if (competitionIndex === -1) {
+        console.log('❌ Competition not found in mock array');
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      const competition = mockCompetitions[competitionIndex];
+      
+      console.log('🔍 Found competition for start:', {
+        id: competition._id,
+        title: competition.title,
+        status: competition.status,
+        creator: competition.creator || competition.createdBy,
+        participantCount: competition.participants?.length || 0
+      });
+
+      // Check if user is the creator
+      const creatorId = competition.createdBy?._id || competition.creator?._id || competition.createdBy || competition.creator;
+      if (creatorId !== req.user.id) {
+        console.log('❌ User is not the creator');
+        return res.status(403).json({ message: 'Only creator can start competition' });
+      }
+
+      if (competition.status !== 'pending') {
+        console.log('❌ Competition cannot be started, status:', competition.status);
+        return res.status(400).json({ message: 'Competition cannot be started' });
+      }
+
+      if ((competition.participants?.length || 0) < 2) {
+        console.log('❌ Need at least 2 participants, current:', competition.participants?.length || 0);
+        return res.status(400).json({ message: 'Need at least 2 participants to start' });
+      }
+
+      // Start the competition
+      competition.status = 'active';
+      competition.actualStartTime = new Date();
+
+      console.log('✅ Mock competition started:', {
+        competitionId: competition._id,
+        actualStartTime: competition.actualStartTime,
+        challengeId: competition.challenge
+      });
+
+      // Emit socket event
+      const io = req.app.get('io');
+      if (io) {
+        const eventData = {
+          competitionId: competition._id,
+          challengeId: competition.challenge,
+          startTime: competition.actualStartTime
+        };
+        console.log('📡 Emitting competitionStarted event:', eventData);
+        io.to(`competition_${competition._id}`).emit('competitionStarted', eventData);
+      }
+
+      return res.json({ 
+        message: 'Competition started successfully', 
+        competition: competition 
+      });
+    }
+
+    // Database mode
+    const competition = await Competition.findById(id);
     if (!competition) {
       return res.status(404).json({ message: 'Competition not found' });
     }
@@ -784,6 +856,7 @@ router.post('/:id/start', auth, async (req, res) => {
 
     res.json({ message: 'Competition started successfully', competition });
   } catch (error) {
+    console.error('Start competition error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1022,8 +1095,8 @@ router.get('/user/my-competitions', auth, async (req, res) => {
 // Auto-submit solution when time expires
 router.post('/:id/auto-submit', [
   auth,
-  body('code').trim().isLength({ min: 1 }).withMessage('Code required'),
-  body('language').isIn(['javascript', 'python', 'java', 'cpp', 'c', 'go', 'rust']).withMessage('Invalid language')
+  body('submissionData.code').trim().isLength({ min: 1 }).withMessage('Code required'),
+  body('submissionData.language').isIn(['javascript', 'python', 'java', 'cpp', 'c', 'go', 'rust']).withMessage('Invalid language')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -1031,8 +1104,143 @@ router.post('/:id/auto-submit', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const competition = await Competition.findById(req.params.id)
-      .populate('challenge');
+    const { id } = req.params;
+    const { submissionData } = req.body;
+    
+    console.log('🏁 Auto-submit request:', {
+      competitionId: id,
+      userId: req.user.id,
+      isAutoSubmitted: submissionData.isAutoSubmitted
+    });
+
+    if (!isDatabaseConnected()) {
+      // Mock mode - handle auto-submit
+      const competitionIndex = mockCompetitions.findIndex(comp => comp._id === id);
+      if (competitionIndex === -1) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      const competition = mockCompetitions[competitionIndex];
+      
+      // Check if user is participant
+      const participantIndex = competition.participants.findIndex(
+        p => (p.user._id || p.user) === req.user.id
+      );
+
+      if (participantIndex === -1) {
+        return res.status(403).json({ message: 'You are not a participant in this competition' });
+      }
+
+      const participant = competition.participants[participantIndex];
+
+      // Simulate code execution and scoring
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const score = Math.floor(Math.random() * 100) + 1;
+      const executionTime = Math.floor(Math.random() * 1000) + 100;
+      
+      // Update participant submission info
+      participant.score = Math.max(participant.score || 0, score);
+      participant.submissionTime = new Date();
+      participant.autoSubmitted = submissionData.isAutoSubmitted || false;
+      participant.status = score >= 70 ? 'accepted' : 'wrong-answer';
+
+      console.log('✅ Mock participant updated:', {
+        userId: req.user.id,
+        score: participant.score,
+        autoSubmitted: participant.autoSubmitted
+      });
+
+      // Check if all participants have submitted or competition should end
+      const allSubmitted = competition.participants.every(p => 
+        p.submissionTime || p.autoSubmitted || (p.user._id || p.user) === req.user.id
+      );
+      
+      let winner = null;
+      let shouldEndCompetition = false;
+      
+      // Check if time is up or all participants submitted
+      if (allSubmitted || submissionData.isAutoSubmitted) {
+        shouldEndCompetition = true;
+      }
+      
+      if (shouldEndCompetition && competition.status === 'active') {
+        // End competition and determine winner
+        competition.status = 'completed';
+        competition.actualEndTime = new Date();
+        
+        console.log('🏁 Ending competition, participants:', competition.participants.map(p => ({
+          userId: p.user._id || p.user,
+          score: p.score || 0,
+          submissionTime: p.submissionTime
+        })));
+        
+        // Find winner (highest score, or earliest submission time if tied)
+        winner = competition.participants.reduce((best, current) => {
+          const currentScore = current.score || 0;
+          const bestScore = best ? (best.score || 0) : 0;
+          
+          if (!best) return current;
+          if (currentScore > bestScore) return current;
+          if (currentScore === bestScore && current.submissionTime < best.submissionTime) return current;
+          return best;
+        }, null);
+        
+        if (winner) {
+          competition.winner = winner.user._id || winner.user;
+        }
+        
+        console.log('🏆 Winner determined:', {
+          winnerId: competition.winner,
+          winnerScore: winner?.score || 0
+        });
+
+        // Emit competition ended event
+        const io = req.app.get('io');
+        if (io) {
+          const winnerData = winner ? {
+            _id: winner.user._id || winner.user,
+            username: winner.user.username || req.user.username, // Fallback
+            score: winner.score || 0
+          } : null;
+          
+          console.log('📡 Emitting competitionEnded event:', winnerData);
+          
+          io.to(`competition_${competition._id}`).emit('competitionEnded', {
+            competitionId: competition._id,
+            winner: winnerData
+          });
+        }
+      }
+
+      // Emit real-time update
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`competition_${competition._id}`).emit('submissionUpdate', {
+          competitionId: competition._id,
+          userId: req.user.id,
+          score: participant.score,
+          status: participant.status,
+          autoSubmitted: participant.autoSubmitted
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Auto-submission successful',
+        score: participant.score,
+        status: participant.status,
+        executionTime,
+        winner: winner ? {
+          _id: winner.user._id || winner.user,
+          username: winner.user.username || req.user.username,
+          score: winner.score || 0
+        } : null
+      });
+    }
+
+    // Database mode
+    const competition = await Competition.findById(id).populate('challenge');
 
     if (!competition) {
       return res.status(404).json({ message: 'Competition not found' });
@@ -1051,13 +1259,13 @@ router.post('/:id/auto-submit', [
     const submission = new Submission({
       user: req.user.id,
       challenge: competition.challenge._id,
-      code: req.body.code,
-      language: req.body.language,
+      code: submissionData.code,
+      language: submissionData.language,
       status: 'pending',
       metadata: {
         competitionId: competition._id,
         isCompetitionSubmission: true,
-        autoSubmitted: true
+        autoSubmitted: submissionData.isAutoSubmitted || false
       }
     });
 
@@ -1076,7 +1284,7 @@ router.post('/:id/auto-submit', [
     participant.score = Math.max(participant.score, score);
     participant.submissionTime = new Date();
     participant.submission = submission._id;
-    participant.autoSubmitted = true;
+    participant.autoSubmitted = submissionData.isAutoSubmitted || false;
 
     await competition.save();
 
@@ -1084,10 +1292,10 @@ router.post('/:id/auto-submit', [
     const allSubmitted = competition.participants.every(p => p.submission || p.autoSubmitted);
     let winner = null;
     
-    if (allSubmitted || competition.isTimeUp()) {
+    if (allSubmitted || submissionData.isAutoSubmitted) {
       // End competition and determine winner
       competition.status = 'completed';
-      competition.endTime = new Date();
+      competition.actualEndTime = new Date();
       
       // Find winner (highest score, or earliest submission time if tied)
       winner = competition.participants.reduce((best, current) => {
@@ -1126,11 +1334,12 @@ router.post('/:id/auto-submit', [
         userId: req.user.id,
         score: participant.score,
         status: submission.status,
-        autoSubmitted: true
+        autoSubmitted: participant.autoSubmitted
       });
     }
 
     res.json({
+      success: true,
       message: 'Auto-submission successful',
       submission,
       score: participant.score,
@@ -1141,6 +1350,7 @@ router.post('/:id/auto-submit', [
       } : null
     });
   } catch (error) {
+    console.error('Auto-submit error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1207,6 +1417,119 @@ router.post('/:id/end', auth, async (req, res) => {
       winner: competition.winner
     });
   } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Delete competition (creator only)
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('🗑️ Delete request received:', {
+      competitionId: id,
+      userId: req.user.id,
+      username: req.user.username
+    });
+    
+    if (!isDatabaseConnected()) {
+      // Mock mode - find and remove from mock array
+      const competitionIndex = mockCompetitions.findIndex(comp => comp._id === id);
+      if (competitionIndex === -1) {
+        console.log('❌ Competition not found in mock array');
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+      
+      const competition = mockCompetitions[competitionIndex];
+      
+      console.log('🔍 Found competition for deletion:', {
+        id: competition._id,
+        title: competition.title,
+        status: competition.status,
+        creator: competition.creator || competition.createdBy
+      });
+      
+      // Check if user is the creator (handle both createdBy and creator fields)
+      const creatorId = competition.createdBy?._id || competition.creator?._id || competition.createdBy || competition.creator;
+      if (!creatorId) {
+        console.log('❌ No creator information found');
+        return res.status(500).json({ message: 'Competition creator information is missing' });
+      }
+      
+      console.log('🔍 Creator check:', {
+        creatorId,
+        requestUserId: req.user.id,
+        match: creatorId === req.user.id
+      });
+      
+      if (creatorId !== req.user.id) {
+        console.log('❌ User is not the creator');
+        return res.status(403).json({ message: 'Only the creator can delete this competition' });
+      }
+      
+      // Temporarily allow deletion of active competitions for testing
+      // Don't allow deletion of active competitions
+      // if (competition.status === 'active') {
+      //   console.log('❌ Cannot delete active competition');
+      //   return res.status(400).json({ message: 'Cannot delete an active competition' });
+      // }
+      
+      console.log('✅ Deleting competition from mock array');
+      // Remove from mock array
+      mockCompetitions.splice(competitionIndex, 1);
+      
+      return res.json({ message: 'Competition deleted successfully' });
+    }
+
+    // Database mode
+    const competition = await Competition.findById(id);
+    if (!competition) {
+      console.log('❌ Competition not found in database');
+      return res.status(404).json({ message: 'Competition not found' });
+    }
+
+    console.log('🔍 Found competition in database:', {
+      id: competition._id,
+      title: competition.title,
+      status: competition.status,
+      creator: competition.creator || competition.createdBy
+    });
+
+    // Check if user is the creator (handle both createdBy and creator fields)
+    const creatorId = competition.createdBy?._id || competition.creator?._id || competition.createdBy || competition.creator;
+    if (!creatorId) {
+      console.log('❌ No creator information found in database');
+      return res.status(500).json({ message: 'Competition creator information is missing' });
+    }
+    
+    console.log('🔍 Database creator check:', {
+      creatorId: creatorId.toString(),
+      requestUserId: req.user.id,
+      match: creatorId.toString() === req.user.id
+    });
+    
+    if (creatorId.toString() !== req.user.id) {
+      console.log('❌ User is not the creator in database');
+      return res.status(403).json({ message: 'Only the creator can delete this competition' });
+    }
+
+    // Temporarily allow deletion of active competitions for testing
+    // Don't allow deletion of active competitions
+    // if (competition.status === 'active') {
+    //   console.log('❌ Cannot delete active competition in database');
+    //   return res.status(400).json({ message: 'Cannot delete an active competition' });
+    // }
+
+    console.log('✅ Deleting competition from database');
+    // Delete related submissions
+    await Submission.deleteMany({ competitionId: competition._id });
+
+    // Delete the competition
+    await Competition.findByIdAndDelete(id);
+
+    res.json({ message: 'Competition deleted successfully' });
+  } catch (error) {
+    console.error('Delete competition error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

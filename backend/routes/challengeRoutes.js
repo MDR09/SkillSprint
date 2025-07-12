@@ -5,6 +5,7 @@ import { protect, authorize, optionalAuth } from '../middleware/auth.js'
 import { validateChallenge } from '../middleware/validation.js'
 import { asyncHandler } from '../middleware/errorHandler.js'
 import mongoose from 'mongoose'
+import CodeTemplateGenerator from '../utils/codeTemplateGenerator.js'
 
 const router = express.Router()
 
@@ -19,14 +20,14 @@ const mockChallenges = {
     tags: ['Array', 'Hash Table'],
     functionName: 'twoSum',
     className: 'Solution',
-    returnType: 'int[]',
+    returnType: 'number[]',
     pythonReturnType: 'List[int]',
     javaReturnType: 'int[]',
     cppReturnType: 'vector<int>',
     cReturnType: 'int*',
     parameters: [
-      { name: 'nums', type: 'int[]', pythonType: 'List[int]', javaType: 'int[]', cppType: 'vector<int>&', cType: 'int*' },
-      { name: 'target', type: 'int', pythonType: 'int', javaType: 'int', cppType: 'int', cType: 'int' }
+      { name: 'nums', type: 'number[]', pythonType: 'List[int]', javaType: 'int[]', cppType: 'vector<int>&', description: 'Array of integers' },
+      { name: 'target', type: 'number', pythonType: 'int', javaType: 'int', cppType: 'int', description: 'Target sum' }
     ],
     sampleTestCases: [
       {
@@ -656,6 +657,147 @@ router.get('/featured', optionalAuth, asyncHandler(async (req, res) => {
     success: true,
     data: featuredWithStatus
   })
+}))
+
+// Get code template for a challenge
+router.get('/:id/template/:language', asyncHandler(async (req, res) => {
+  const { id, language } = req.params
+  
+  // Validate language
+  const supportedLanguages = ['javascript', 'python', 'java', 'cpp']
+  if (!supportedLanguages.includes(language.toLowerCase())) {
+    return res.status(400).json({
+      success: false,
+      message: `Unsupported language: ${language}. Supported languages: ${supportedLanguages.join(', ')}`
+    })
+  }
+
+  let challenge
+  
+  try {
+    // Check if MongoDB is connected
+    if (mongoose.connection.readyState === 1) {
+      challenge = await Challenge.findById(id)
+      if (!challenge) {
+        return res.status(404).json({
+          success: false,
+          message: 'Challenge not found'
+        })
+      }
+    } else {
+      // Fallback to mock data
+      challenge = mockChallenges[id]
+      if (!challenge) {
+        return res.status(404).json({
+          success: false,
+          message: 'Challenge not found'
+        })
+      }
+    }
+  } catch (error) {
+    console.log('Database error, falling back to mock data:', error.message)
+    challenge = mockChallenges[id]
+    if (!challenge) {
+      return res.status(404).json({
+        success: false,
+        message: 'Challenge not found'
+      })
+    }
+  }
+
+  try {
+    const template = CodeTemplateGenerator.generateTemplate(challenge, language)
+    
+    res.json({
+      success: true,
+      data: {
+        template,
+        language,
+        functionName: challenge.functionName,
+        parameters: challenge.parameters,
+        returnType: challenge.returnType
+      }
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating code template',
+      error: error.message
+    })
+  }
+}))
+
+// Run test cases for a challenge
+router.post('/:id/test', asyncHandler(async (req, res) => {
+  const { id } = req.params
+  const { code, language } = req.body
+  
+  if (!code || !language) {
+    return res.status(400).json({
+      success: false,
+      message: 'Code and language are required'
+    })
+  }
+
+  let challenge
+  
+  try {
+    // Check if MongoDB is connected
+    if (mongoose.connection.readyState === 1) {
+      challenge = await Challenge.findById(id)
+      if (!challenge) {
+        return res.status(404).json({
+          success: false,
+          message: 'Challenge not found'
+        })
+      }
+    } else {
+      // Fallback to mock data
+      challenge = mockChallenges[id]
+      if (!challenge) {
+        return res.status(404).json({
+          success: false,
+          message: 'Challenge not found'
+        })
+      }
+    }
+  } catch (error) {
+    console.log('Database error, falling back to mock data:', error.message)
+    challenge = mockChallenges[id]
+    if (!challenge) {
+      return res.status(404).json({
+        success: false,
+        message: 'Challenge not found'
+      })
+    }
+  }
+
+  try {
+    // Generate test runner for visible test cases only
+    const testRunner = CodeTemplateGenerator.generateTestCaseRunner(challenge, language, code)
+    
+    if (!testRunner) {
+      return res.status(400).json({
+        success: false,
+        message: `Test runner not available for language: ${language}`
+      })
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        testRunner,
+        visibleTestCases: challenge.testCases ? challenge.testCases.filter(tc => !tc.isHidden).length : 0,
+        totalTestCases: challenge.testCases ? challenge.testCases.length : 0
+      }
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating test runner',
+      error: error.message
+    })
+  }
 }))
 
 export default router

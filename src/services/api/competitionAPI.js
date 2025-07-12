@@ -53,7 +53,11 @@ export const competitionAPI = {
   // Get user's competitions
   getMyCompetitions: (params = {}) => 
     api.get('/competitions/user/my-competitions', { params }),
-  
+
+  // Delete competition (creator only)
+  deleteCompetition: (competitionId) => 
+    api.delete(`/competitions/${competitionId}`),
+
   // Quick challenge friend (create 1v1 competition)
   challengeFriend: (username, challengeId, timeLimit = 60) => 
     api.post('/competitions', {

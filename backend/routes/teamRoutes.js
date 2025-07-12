@@ -31,15 +31,20 @@ router.post('/', [
     const team = new Team({
       name,
       description,
-      creator: req.user.id,
-      members: [req.user.id],
+      leader: req.user.id,
+      members: [{
+        user: req.user.id,
+        role: 'leader',
+        joinedAt: new Date(),
+        status: 'active'
+      }],
       maxMembers,
       isPublic
     });
 
     await team.save();
-    await team.populate('members', 'username email avatar');
-    await team.populate('creator', 'username email avatar');
+    await team.populate('members.user', 'username email avatar');
+    await team.populate('leader', 'username email avatar');
 
     res.status(201).json(team);
   } catch (error) {
@@ -55,8 +60,8 @@ router.get('/', async (req, res) => {
     const skip = (page - 1) * limit;
 
     const teams = await Team.find({ isPublic: true })
-      .populate('members', 'username avatar')
-      .populate('creator', 'username avatar')
+      .populate('members.user', 'username avatar')
+      .populate('leader', 'username avatar')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -79,9 +84,9 @@ router.get('/', async (req, res) => {
 // Get user's teams
 router.get('/my-teams', auth, async (req, res) => {
   try {
-    const teams = await Team.find({ members: req.user.id })
-      .populate('members', 'username avatar')
-      .populate('creator', 'username avatar')
+    const teams = await Team.find({ 'members.user': req.user.id })
+      .populate('members.user', 'username avatar')
+      .populate('leader', 'username avatar')
       .sort({ createdAt: -1 });
 
     res.json(teams);
@@ -94,9 +99,9 @@ router.get('/my-teams', auth, async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const team = await Team.findById(req.params.id)
-      .populate('members', 'username email avatar skillLevel')
-      .populate('creator', 'username email avatar')
-      .populate('challenges', 'title difficulty status');
+      .populate('members.user', 'username email avatar skillLevel')
+      .populate('leader', 'username email avatar')
+      .populate('challenges.challenge', 'title difficulty status');
 
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
@@ -117,17 +122,24 @@ router.post('/:id/join', auth, async (req, res) => {
       return res.status(404).json({ message: 'Team not found' });
     }
 
-    if (team.members.includes(req.user.id)) {
+    // Check if user is already a member
+    const existingMember = team.members.find(member => 
+      member.user.toString() === req.user.id.toString()
+    );
+    
+    if (existingMember && existingMember.status === 'active') {
       return res.status(400).json({ message: 'Already a member of this team' });
     }
 
-    if (team.members.length >= team.maxMembers) {
+    // Check if team is full (count active members)
+    const activeMemberCount = team.members.filter(member => member.status === 'active').length;
+    if (activeMemberCount >= team.maxMembers) {
       return res.status(400).json({ message: 'Team is full' });
     }
 
-    team.members.push(req.user.id);
-    await team.save();
-    await team.populate('members', 'username avatar');
+    // Use the model's addMember method
+    await team.addMember(req.user.id);
+    await team.populate('members.user', 'username avatar');
 
     res.json({ message: 'Successfully joined team', team });
   } catch (error) {
@@ -144,22 +156,33 @@ router.post('/:id/leave', auth, async (req, res) => {
       return res.status(404).json({ message: 'Team not found' });
     }
 
-    if (!team.members.includes(req.user.id)) {
+    // Check if user is a member
+    const memberIndex = team.members.findIndex(member => 
+      member.user.toString() === req.user.id.toString() && member.status === 'active'
+    );
+    
+    if (memberIndex === -1) {
       return res.status(400).json({ message: 'Not a member of this team' });
     }
 
-    if (team.creator.toString() === req.user.id && team.members.length > 1) {
-      return res.status(400).json({ message: 'Creator cannot leave team with members. Transfer ownership first.' });
+    // Check if user is the leader
+    if (team.leader.toString() === req.user.id.toString()) {
+      const activeMemberCount = team.members.filter(member => member.status === 'active').length;
+      if (activeMemberCount > 1) {
+        return res.status(400).json({ message: 'Leader cannot leave team with members. Transfer ownership first.' });
+      }
     }
 
-    team.members = team.members.filter(member => member.toString() !== req.user.id);
+    // Use the model's removeMember method
+    await team.removeMember(req.user.id);
     
-    if (team.members.length === 0) {
+    // If no active members left, delete the team
+    const activeMemberCount = team.members.filter(member => member.status === 'active').length;
+    if (activeMemberCount === 0) {
       await Team.findByIdAndDelete(req.params.id);
       return res.json({ message: 'Team deleted as last member left' });
     }
 
-    await team.save();
     res.json({ message: 'Successfully left team' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -185,8 +208,8 @@ router.put('/:id', [
       return res.status(404).json({ message: 'Team not found' });
     }
 
-    if (team.creator.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Only team creator can update team' });
+    if (team.leader.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Only team leader can update team' });
     }
 
     const updates = req.body;
@@ -195,8 +218,8 @@ router.put('/:id', [
     });
 
     await team.save();
-    await team.populate('members', 'username avatar');
-    await team.populate('creator', 'username avatar');
+    await team.populate('members.user', 'username avatar');
+    await team.populate('leader', 'username avatar');
 
     res.json(team);
   } catch (error) {
@@ -204,7 +227,7 @@ router.put('/:id', [
   }
 });
 
-// Remove member (creator only)
+// Remove member (leader only)
 router.delete('/:id/members/:memberId', auth, async (req, res) => {
   try {
     const team = await Team.findById(req.params.id);
@@ -213,16 +236,16 @@ router.delete('/:id/members/:memberId', auth, async (req, res) => {
       return res.status(404).json({ message: 'Team not found' });
     }
 
-    if (team.creator.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Only team creator can remove members' });
+    if (team.leader.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Only team leader can remove members' });
     }
 
     if (req.params.memberId === req.user.id) {
       return res.status(400).json({ message: 'Cannot remove yourself. Use leave endpoint instead.' });
     }
 
-    team.members = team.members.filter(member => member.toString() !== req.params.memberId);
-    await team.save();
+    // Use the model's removeMember method
+    await team.removeMember(req.params.memberId);
 
     res.json({ message: 'Member removed successfully' });
   } catch (error) {

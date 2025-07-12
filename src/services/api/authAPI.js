@@ -70,6 +70,12 @@ const authAPI = {
     try {
       return await api.get('/auth/profile')
     } catch (error) {
+      // Handle rate limiting
+      if (error.response?.status === 429) {
+        console.warn('Rate limit exceeded. Please wait before making more requests.')
+        throw new Error('Too many requests from this IP, please try again later.')
+      }
+      
       // Mock profile for demo
       if (error.code === 'ERR_NETWORK' || error.response?.status >= 500) {
         return {

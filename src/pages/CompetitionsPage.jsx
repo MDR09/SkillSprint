@@ -17,6 +17,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner'
 import CompetitionCard from '../components/competitions/CompetitionCard'
 import CreateCompetitionModal from '../components/competitions/CreateCompetitionModal'
 import ChallengeFriendModal from '../components/competitions/ChallengeFriendModal'
+import { useDeletedCompetitions } from '../hooks/useDeletedCompetitions'
 
 const statusOptions = [
   { value: 'all', label: 'All Competitions' },
@@ -41,6 +42,9 @@ const CompetitionsPage = () => {
   const [filterStatus, setFilterStatus] = useState('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showChallengeModal, setShowChallengeModal] = useState(false)
+  
+  // Hook to manage locally deleted competitions
+  const { markAsDeleted, isDeleted } = useDeletedCompetitions()
 
   useEffect(() => {
     if (activeTab === 'all') {
@@ -302,7 +306,11 @@ const CompetitionsPage = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
               >
-                <CompetitionCard competition={competition} />
+                <CompetitionCard 
+                  competition={competition} 
+                  onDelete={() => markAsDeleted(competition._id)}
+                  isDeleted={isDeleted(competition._id)}
+                />
               </motion.div>
             ))}
           </motion.div>

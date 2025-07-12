@@ -1,0 +1,130 @@
+{
+  "title": "Valid Parentheses",
+  "difficulty": "Easy",
+  "description": "Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.",
+  "problemStatement": "An input string is valid if:\n\n1. Open brackets must be closed by the same type of brackets.\n2. Open brackets must be closed in the correct order.\n3. Every close bracket has a corresponding open bracket of the same type.",
+  "functionName": "isValid",
+  "parameters": [
+    {
+      "name": "s",
+      "type": "string",
+      "pythonType": "str",
+      "javaType": "String",
+      "cppType": "string",
+      "description": "String containing parentheses characters: '()[]{}''"
+    }
+  ],
+  "returnType": "boolean",
+  "pythonReturnType": "bool",
+  "javaReturnType": "boolean",
+  "cppReturnType": "bool",
+  "examples": [
+    {
+      "input": "s = \"()\"",
+      "output": "true",
+      "explanation": "The string contains valid parentheses."
+    },
+    {
+      "input": "s = \"()[]{}\"",
+      "output": "true",
+      "explanation": "All brackets are properly closed."
+    },
+    {
+      "input": "s = \"(]\"",
+      "output": "false",
+      "explanation": "The brackets are not properly matched."
+    }
+  ],
+  "constraints": [
+    "1 <= s.length <= 10^4",
+    "s consists of parentheses only '()[]{}'."
+  ],
+  "hints": [
+    "Use a stack to keep track of opening brackets.",
+    "When you encounter a closing bracket, check if it matches the most recent opening bracket.",
+    "The string is valid if the stack is empty at the end."
+  ],
+  "testCases": [
+    {
+      "input": {
+        "s": "()"
+      },
+      "expectedOutput": true,
+      "isHidden": false
+    },
+    {
+      "input": {
+        "s": "()[]{}"
+      },
+      "expectedOutput": true,
+      "isHidden": false
+    },
+    {
+      "input": {
+        "s": "(]"
+      },
+      "expectedOutput": false,
+      "isHidden": false
+    },
+    {
+      "input": {
+        "s": "([)]"
+      },
+      "expectedOutput": false,
+      "isHidden": true
+    },
+    {
+      "input": {
+        "s": "{[]}"
+      },
+      "expectedOutput": true,
+      "isHidden": true
+    },
+    {
+      "input": {
+        "s": ""
+      },
+      "expectedOutput": true,
+      "isHidden": true
+    },
+    {
+      "input": {
+        "s": "((("
+      },
+      "expectedOutput": false,
+      "isHidden": true
+    },
+    {
+      "input": {
+        "s": ")))"
+      },
+      "expectedOutput": false,
+      "isHidden": true
+    },
+    {
+      "input": {
+        "s": "(){}}{("
+      },
+      "expectedOutput": false,
+      "isHidden": true
+    },
+    {
+      "input": {
+        "s": "{[()()]}"
+      },
+      "expectedOutput": true,
+      "isHidden": true
+    }
+  ],
+  "category": "Stack",
+  "tags": ["String", "Stack"],
+  "timeComplexity": "O(n)",
+  "spaceComplexity": "O(n)",
+  "allowedLanguages": ["javascript", "python", "java", "cpp"],
+  "timeLimit": 30,
+  "memoryLimit": "256MB",
+  "scoring": {
+    "maxPoints": 100,
+    "partialCredit": true
+  }
+}

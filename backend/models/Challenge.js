@@ -2,11 +2,11 @@ import mongoose from 'mongoose'
 
 const testCaseSchema = new mongoose.Schema({
   input: {
-    type: String,
+    type: mongoose.Schema.Types.Mixed, // Can be object, array, string, number, etc.
     required: true
   },
   expectedOutput: {
-    type: String,
+    type: mongoose.Schema.Types.Mixed, // Can be object, array, string, number, etc.
     required: true
   },
   isHidden: {
@@ -16,6 +16,54 @@ const testCaseSchema = new mongoose.Schema({
   weight: {
     type: Number,
     default: 1
+  },
+  description: {
+    type: String,
+    maxlength: [500, 'Test case description cannot be more than 500 characters']
+  },
+  timeLimit: {
+    type: Number, // in seconds, overrides global time limit if specified
+    min: [1, 'Time limit must be at least 1 second'],
+    max: [60, 'Time limit cannot exceed 60 seconds per test case']
+  }
+})
+
+const exampleSchema = new mongoose.Schema({
+  input: {
+    type: String,
+    required: true
+  },
+  output: {
+    type: String,
+    required: true
+  },
+  explanation: {
+    type: String,
+    maxlength: [1000, 'Example explanation cannot be more than 1000 characters']
+  }
+})
+
+const parameterSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true
+  },
+  type: {
+    type: String,
+    required: true // e.g., "number", "string", "number[]", "string[]"
+  },
+  pythonType: {
+    type: String // e.g., "int", "str", "List[int]", "List[str]"
+  },
+  javaType: {
+    type: String // e.g., "int", "String", "int[]", "String[]"
+  },
+  cppType: {
+    type: String // e.g., "int", "string", "vector<int>", "vector<string>"
+  },
+  description: {
+    type: String,
+    maxlength: [200, 'Parameter description cannot be more than 200 characters']
   }
 })
 
@@ -87,23 +135,59 @@ const challengeSchema = new mongoose.Schema({
     type: String,
     enum: ['javascript', 'python', 'java', 'cpp', 'c', 'go', 'rust', 'typescript']
   }],
-  testCases: [testCaseSchema],
-  sampleInput: {
+  // Function signature for code template generation
+  functionName: {
     type: String,
-    required: true
+    required: true,
+    maxlength: [50, 'Function name cannot be more than 50 characters']
+  },
+  parameters: [parameterSchema],
+  returnType: {
+    type: String,
+    required: true // e.g., "number", "string", "boolean", "number[]"
+  },
+  pythonReturnType: {
+    type: String // e.g., "int", "str", "bool", "List[int]"
+  },
+  javaReturnType: {
+    type: String // e.g., "int", "String", "boolean", "int[]"
+  },
+  cppReturnType: {
+    type: String // e.g., "int", "string", "bool", "vector<int>"
+  },
+  
+  // Examples shown to users
+  examples: [exampleSchema],
+  
+  // Test cases for evaluation
+  testCases: [testCaseSchema],
+  
+  // Legacy fields for backward compatibility
+  sampleInput: {
+    type: String
   },
   sampleOutput: {
-    type: String,
-    required: true
+    type: String
   },
-  constraints: {
+  constraints: [{
     type: String,
-    maxlength: [1000, 'Constraints cannot be more than 1000 characters']
-  },
+    maxlength: [200, 'Each constraint cannot be more than 200 characters']
+  }],
   hints: [{
     type: String,
     maxlength: [500, 'Hint cannot be more than 500 characters']
   }],
+  
+  // Algorithm complexity information
+  timeComplexity: {
+    type: String,
+    maxlength: [100, 'Time complexity cannot be more than 100 characters']
+  },
+  spaceComplexity: {
+    type: String,
+    maxlength: [100, 'Space complexity cannot be more than 100 characters']
+  },
+  
   scoring: {
     maxPoints: {
       type: Number,

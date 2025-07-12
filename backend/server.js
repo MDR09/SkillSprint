@@ -23,7 +23,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // Import middleware and config
-import { connectDB, connectDBAlternative } from './config/database.js'
+import { connectDB, connectDBAlternative, connectDBLocal } from './config/database.js'
 import { setupSocketIO } from './config/socket.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { configurePassport } from './config/passport.js'
@@ -85,28 +85,46 @@ app.set('socketHelpers', socketHelpers)
 
 // Async function to start the server
 const startServer = async () => {
-  // Connect to database (async) - try multiple methods
+  // Connect to database with multiple fallback options
   let dbConnection = null
   try {
-    console.log('🔄 Attempting primary database connection...')
+    console.log('� Starting SkillSprint server...')
+    console.log('�🔄 Attempting database connections...')
+    
+    // Try primary connection first
     dbConnection = await connectDB()
     
+    // If primary fails, try alternative method
     if (!dbConnection && process.env.MONGODB_URI) {
       console.log('🔄 Primary connection failed, trying alternative method...')
       dbConnection = await connectDBAlternative()
     }
     
+    // If Atlas connections fail, try local MongoDB
+    if (!dbConnection) {
+      console.log('🔄 Atlas connections failed, trying local MongoDB...')
+      dbConnection = await connectDBLocal()
+    }
+    
     if (dbConnection) {
       console.log('✅ Database connection successful!')
+      console.log('💾 Database features: ENABLED')
     } else {
-      console.log('⚠️  All database connection attempts failed, continuing in mock mode')
+      console.log('⚠️  All database connection attempts failed')
+      console.log('🔧 Running in MOCK DATA mode')
+      console.log('💡 To fix this:')
+      console.log('   • Check your MongoDB Atlas connection string')
+      console.log('   • Verify network connectivity')
+      console.log('   • Install local MongoDB for development')
     }
   } catch (error) {
-    console.log('⚠️  Database connection failed, continuing in mock mode')
+    console.error('❌ Database connection error:', error.message)
+    console.log('🔧 Continuing in MOCK DATA mode')
   }
 
   // Make db connection status available to routes
   app.set('dbConnection', dbConnection)
+  app.set('mockMode', !dbConnection)
 
   // Import routes dynamically after environment variables are loaded
   const { default: authRoutes } = await import('./routes/authRoutes.js')
